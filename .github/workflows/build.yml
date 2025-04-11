@@ -30,7 +30,7 @@ jobs:
             google-cloud-sdk imagemagick \
             libmagickcore-dev libmagickwand-dev libmagic-dev ant ant-optional kubectl \
             mercurial apt-transport-https mono-complete libmysqlclient \
-            unixodbc-dev yarn chrpath libssl-dev libxft-dev \
+            unixodbc-dev yarn chrpath libxft-dev \
             libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
             snmp pollinate libpq-dev postgresql-client powershell ruby-full \
             sphinxsearch subversion mongodb-org microsoft-edge-stable || true
@@ -51,36 +51,12 @@ jobs:
         run: |
           # Install dependencies
           sudo apt update
-          sudo apt install -y python3 python-is-python3
-          sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            python3-pip \
-            curl \
-            git \
-            zip \
-            unzip \
-            gcc \
-            g++ \
-            make \
-            ninja-build \
-            file \
-            bc \
-            bison \
-            flex \
-            libssl-dev \
-            libelf-dev \
-            wget \
-            build-essential \
-            python3-dev \
-            python3-setuptools \
-            rsync \
-            ccache \
-            llvm-dev
-          
-          mkdir -p ./git-repo
-          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-          chmod a+rx ./git-repo/repo
-          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+            python3 python-is-python3 python3-pip python3-dev python3-setuptools \
+            curl git zip unzip wget tar zstd libarchive-tools file rsync \
+            gcc g++ clang lld make ninja-build ccache build-essential \
+            llvm-dev libelf-dev \
+            bc bison flex repo
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -91,22 +67,6 @@ jobs:
           
           echo "CONFIG set to: $CONFIG"
 
-      - name: Clone AnyKernel3 and Other Dependencies
-        run: |
-          echo "Cloning AnyKernel3 and other dependencies..."
-          
-          ANYKERNEL_BRANCH="gki"
-          SUSFS_BRANCH="kernel-5.4"
-
-          # Debug print the branches
-          echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
-          echo "Using branch for SUSFS: $SUSFS_BRANCH"
-
-          # Clone repositories using the branch names
-          git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
-          git clone https://github.com/TheWildJames/kernel_patches.git
-
       - name: Initialize and Sync Kernel Source
         run: |
           echo "Creating folder for configuration: $CONFIG..."
@@ -115,58 +75,57 @@ jobs:
           
           # Initialize and sync kernel source
           echo "Initializing and syncing kernel source..."
-          $REPO init -u https://github.com/fatalcoder524/OP9_KSUN_SUSFS.git -b main -m manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
+          repo init -u https://github.com/fatalcoder524/OP9_KSUN_SUSFS.git -b main -m manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
           
           # Sync repo and apply patches
-          $REPO --version
-          $REPO --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j$(nproc --all) --fail-fast
+          repo --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j$(nproc --all) --fail-fast
       
       - name: Add KernelSU
         run: |
           echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          cd "$CONFIG/kernel/msm-5.4"
           
           echo "Adding KernelSU..."
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           
           git submodule update --init --recursive
           cd KernelSU-Next/kernel
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
+          KSUN_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
+          echo "KSUNVER=$KSUN_VERSION" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSUN_VERSION}/" Makefile
 
       - name: Apply SUSFS Patches
         run: |
           echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          cd "$CONFIG/kernel"
           
           echo "Applying SUSFS patches..."
           
           # Copy SUSFS patches
-          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-5.4.patch ./common/
-          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          # cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-5.4.patch ./common/
+          # cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          # cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           
-          cd ./KernelSU-Next
+          # cd ./KernelSU-Next
           
-          echo "Applying next SUSFS patches..."
-          cp ../../../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./
-          patch -p1 --forward < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
+          # echo "Applying next SUSFS patches..."
+          # cp ../../../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./
+          # patch -p1 --forward < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
           
           # Change to common directory and apply SUSFS patch
-          cd ../common
-          patch -p1 < 50_add_susfs_in_kernel-5.4.patch || true
+          # cd ../common
+          # patch -p1 < 50_add_susfs_in_kernel-5.4.patch || true
 
       - name: Apply KSU Hooks
         run: |
           echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform/common"
-          bash $GITHUB_WORKSPACE/ksu_patch.sh
+          cd "$CONFIG/kernel/msm-5.4"
+          bash $GITHUB_WORKSPACE/Patches/ksu_patch.sh
 
       - name: Apply Hide Stuff Patches
         run: |
           echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform/common"
+          cd "$CONFIG/kernel/msm-5.4"
           # Apply additional patch
           #cp ../../../kernel_patches/69_hide_stuff.patch ./
           #patch -p1 -F 3 < 69_hide_stuff.patch
@@ -174,100 +133,76 @@ jobs:
       - name: Add SUSFS Configuration Settings
         run: |
           echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          cd "$CONFIG/kernel/msm-5.4"
           
           echo "Adding configuration settings to gki_defconfig..."
 
           # Add KSU configuration settings
-          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_WITH_KPROBES=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU=y" >> ./arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_WITH_KPROBES=n" >> ./arch/arm64/configs/gki_defconfig
           
           # Add SUSFS configuration settings
-          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./arch/arm64/configs/gki_defconfig
+          # echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./arch/arm64/configs/gki_defconfig
           
           # Add additional tmpfs config setting
-          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_XATTR=y" >> ./arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./arch/arm64/configs/gki_defconfig
 
       - name: Run sed and perl Commands
         run: |
           echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          cd "$CONFIG/kernel/msm-5.4"
           
           echo "Running sed commands..."
 
-          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./arch/arm64/configs/gki_defconfig"
           
           # Run sed commands for modifications
-          sed -i 's/check_defconfig//' ./common/build.config.gki
-          sed -i '$s|echo "\$res"|echo "\$res-fatalcoder524"|' ./common/scripts/setlocalversion
-          sed -i '$s|echo "\$res"|echo "\$res-fatalcoder524"|' ./external/dtc/scripts/setlocalversion
-          sed -i 's/-dirty//' ./common/scripts/setlocalversion
-          sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
+          sed -i 's/check_defconfig//' ./build.config.gki
+          sed -i '$s|echo "\$res"|echo "\$res-fatalcoder524"|' ./scripts/setlocalversion
+          sed -i 's/-dirty//' ./scripts/setlocalversion
          
           # Run perl command to modify UTS_VERSION
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Thu Mar 05 04:20:00 UTC 2025"}' ./common/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Thu Mar 05 04:20:00 UTC 2025"}' ./scripts/mkcompile_h
 
-      - name: Build the Kernel
+      - name: GCC Build
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
-          
-          echo "Building the kernel..."
-          # Clear Cache
-          sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
-          
-          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          
-          cd kernel_platform/common
-          export ARCH=arm64
-          export SUBARCH=arm64
-          # export CROSS_COMPILE=aarch64-linux-android-
-          # export PATH=$(pwd)/aarch64-linux-android-4.9/bin:$PATH
-          
-          make V=1 O=../../out clean
-          make V=1 O=../../out mrproper
-          make V=1 O=../../out lahaina-gki_defconfig
-          make V=1 O=../../out -j$(nproc --all)
+          sed -i s/build-user/fatalcoder524/g build/_setup_env.sh
+          sed -i s/build-host/oos/g build/_setup_env.sh
+          cp $GITHUB_WORKSPACE/build.config.lemonadep ./kernel/msm-5.4/build.config.lemonadep
+          cd kernel/msm-5.4/
+          patch -p1 -F 3 < $GITHUB_WORKSPACE/Patches/init_Kconfig.patch
+          cd ../../
+          BUILD_CONFIG=kernel/msm-5.4/build.config.lemonadep VARIANT=qgki BUILTIN=1 COMPILER=gcc GCC_LTO=1 GRAPHITE=1 PGO=1 SKIP_MRPROPER=1 BUILD_KERNEL=1 build/build.sh
 
-      - name: Copy Images
+      - name: Create zip
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
+          cp out/msm-5.4-lahaina-qgki/dist/Image AnyKernel3/
+          cat out/msm-5.4-lahaina-qgki/dist/*.dtb > AnyKernel3/dtb
+          cp out/msm-5.4-lahaina-qgki/dist/dtbo.img AnyKernel3/
+          cd AnyKernel3/ && zip -r9 OP9P-$(/bin/date -u '+%d%m%Y%I%M')-gcc.zip * -x .git README.md ./*/placeholder
+          cd ../
 
-          echo "Copying Image"
-          cp ./out/dist/Image ../AnyKernel3/Image
-
-      - name: Create ZIP Files for Different Formats
-        run: |
-          echo "Navigating to AnyKernel3 directory..."
-          cd ./AnyKernel3
-
-          # Zip the files in the AnyKernel3 directory with a new naming convention
-          ZIP_NAME="OP9_Next_SUSFS_AnyKernel3.zip"
-          echo "Creating zip file $ZIP_NAME..."
-          zip -r "../$ZIP_NAME" ./*
-          
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@main
         with:
-          name: kernel-${{ env.CONFIG }}
-          path: |
-            *.zip
+         name: "lemonadep-ksun-release-$KSUNVER-zip"
+         path: "$CONFIG/AnyKernel3/*.zip"
