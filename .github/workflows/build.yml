@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-kernel-oneplus-kernelsu-susfs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Setup System
@@ -26,22 +26,30 @@ jobs:
           # Remove large unwanted packages
           sudo apt-get purge -y \
             aria2 ansible azure-cli shellcheck rpm xorriso zsync \
-            esl-erlang firefox gfortran-8 gfortran-9 google-chrome-stable \
+            firefox gfortran-9 google-chrome-stable \
             google-cloud-sdk imagemagick \
             libmagickcore-dev libmagickwand-dev libmagic-dev ant ant-optional kubectl \
-            mercurial apt-transport-https mono-complete libmysqlclient \
+            mercurial apt-transport-https mono-complete \
             unixodbc-dev yarn chrpath libxft-dev \
             libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
             snmp pollinate libpq-dev postgresql-client powershell ruby-full \
-            sphinxsearch subversion mongodb-org microsoft-edge-stable || true
-          
+            sphinxsearch subversion microsoft-edge-stable gcc g++ binutils binutils-common binutils-x86-64-linux-gnu build-essential || true
+            
           # Regex-based purges (for bulk families like mysql, php, dotnet)
           sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet') || true
           
           # Clean up
           sudo apt-get autoremove -y
           sudo apt-get autoclean -y
+          sudo apt-mark hold gcc g++ binutils build-essential
           echo "some packages purged"
+          
+          set -x
+          which as   # should NOT point to /usr/bin/as during build
+          which gcc  # should be empty or not used
+          
+          ls -l /usr/bin/gcc
+          ls -l /usr/bin/as
           
           df -h
 
@@ -51,12 +59,62 @@ jobs:
         run: |
           # Install dependencies
           sudo apt update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt upgrade
+          sudo apt-get install -y -f --no-install-recommends \
             python3 python-is-python3 python3-pip python3-dev python3-setuptools \
             curl git zip unzip wget tar zstd libarchive-tools file rsync \
-            gcc g++ clang lld make ninja-build ccache build-essential \
+            lld make ninja-build \
             llvm-dev libelf-dev \
-            bc bison flex repo
+            bc bison flex
+            
+          sudo apt install aptitude
+          sudo aptitude -y install binutils-aarch64-linux-gnu
+          
+          mkdir -p ./git-repo
+          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+          chmod a+rx ./git-repo/repo
+          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+          
+          set -x
+          which as   # should NOT point to /usr/bin/as during build
+          which gcc  # should be empty or not used
+
+      # - name: Sync Clang
+        # run: |
+          # set -x
+          # mkdir -p prebuilts-master/clang/host/linux-x86/clang-r450784d/
+          # cd prebuilts-master/clang/host/linux-x86/clang-r450784d/
+          # curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          # bash antman -S=latest
+          # bash antman --patch=glibc
+          
+          # which as   # should NOT point to /usr/bin/as during build
+          # which gcc  # should be empty or not used
+          
+          # ls -l /usr/bin/gcc
+          # ls -l /usr/bin/as
+
+      - name: Setup Environment
+        run: |
+          export CLANG_PATH=~/clang
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
+          sh -c "$(curl -sSL https://raw.githubusercontent.com/akhilnarang/scripts/master/setup/android_build_env.sh)"
+          sudo apt install --fix-missing
+          export LLVM_VERSION=13
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh $LLVM_VERSION
+          rm ./llvm.sh
+          sudo apt install --fix-missing
+          sudo ln -s --force /usr/bin/clang-$LLVM_VERSION /usr/bin/clang
+          sudo ln -s --force /usr/bin/ld.lld-$LLVM_VERSION /usr/bin/ld.lld
+          sudo ln -s --force /usr/bin/llvm-objdump-$LLVM_VERSION /usr/bin/llvm-objdump
+          sudo ln -s --force /usr/bin/llvm-ar-$LLVM_VERSION /usr/bin/llvm-ar
+          sudo ln -s --force /usr/bin/llvm-nm-$LLVM_VERSION /usr/bin/llvm-nm
+          sudo ln -s --force /usr/bin/llvm-strip-$LLVM_VERSION /usr/bin/llvm-strip
+          sudo ln -s --force /usr/bin/llvm-objcopy-$LLVM_VERSION /usr/bin/llvm-objcopy
+          sudo ln -s --force /usr/bin/llvm-readelf-$LLVM_VERSION /usr/bin/llvm-readelf
+          sudo ln -s --force /usr/bin/clang++-$LLVM_VERSION /usr/bin/clang++
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -75,10 +133,10 @@ jobs:
           
           # Initialize and sync kernel source
           echo "Initializing and syncing kernel source..."
-          repo init -u https://github.com/fatalcoder524/OP9_KSUN_SUSFS.git -b main -m manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
+          $REPO init -u https://github.com/fatalcoder524/OP9_KSUN_SUSFS.git -b main -m manifest.xml --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags
           
           # Sync repo and apply patches
-          repo --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j$(nproc --all) --fail-fast
+          $REPO --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j$(nproc --all) --fail-fast
       
       - name: Add KernelSU
         run: |
@@ -93,6 +151,21 @@ jobs:
           KSUN_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
           echo "KSUNVER=$KSUN_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSUN_VERSION}/" Makefile
+          
+          cd ../../
+          about_kprobe="
+          CONFIG_MODULES=y
+          CONFIG_KPROBES=y
+          CONFIG_HAVE_KPROBES=y
+          CONFIG_TRACING_SUPPORT=y
+          CONFIG_FTRACE=y
+          CONFIG_HAVE_REGS_AND_STACK_ACCESS_API=y
+          CONFIG_KPROBE_EVENTS=y
+          "
+          for config_name in $about_kprobe
+          do
+            printf "\n$config_name\n" >> "arch/arm64/configs/vendor/lahaina_NQGKI.config"
+          done
 
       - name: Apply SUSFS Patches
         run: |
@@ -190,8 +263,73 @@ jobs:
           cp $GITHUB_WORKSPACE/build.config.lemonadep ./kernel/msm-5.4/build.config.lemonadep
           cd kernel/msm-5.4/
           patch -p1 -F 3 < $GITHUB_WORKSPACE/Patches/init_Kconfig.patch
+          find . -type f -exec sed -i 's/\(make\s\+-C[^\n]*\)\s\+/\1 -j$(nproc) -v /g' {} +
           cd ../../
-          BUILD_CONFIG=kernel/msm-5.4/build.config.lemonadep VARIANT=qgki BUILTIN=1 COMPILER=gcc GCC_LTO=1 GRAPHITE=1 PGO=1 SKIP_MRPROPER=1 BUILD_KERNEL=1 build/build.sh
+          
+          # Export variables for immediate use in the shell
+          export CLANG_PATH=~/clang
+          export PATH=${CLANG_PATH}/bin:${PATH}
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export ARCH=arm64
+          export SUBARCH=arm64
+          
+          # Append variables to $GITHUB_ENV for GitHub Actions
+          echo "CLANG_PATH=~/clang" >> $GITHUB_ENV
+          echo "PATH=${CLANG_PATH}/bin:${PATH}" >> $GITHUB_ENV
+          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          echo "SUBARCH=arm64" >> $GITHUB_ENV
+          
+          # Export build configuration variables
+          export BUILD_CONFIG=kernel/msm-5.4/build.config.lemonadep
+          export VARIANT=qgki
+          export BUILTIN=1
+          export LTO=thin
+          export POLLY=1
+          export GRAPHITE=1
+          export PGO=1
+          export SKIP_MRPROPER=1
+          export BUILD_KERNEL=1
+          export CC=clang
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export AR=llvm-ar
+          export NM=llvm-nm
+          export OBJCOPY=llvm-objcopy
+          export OBJDUMP=llvm-objdump
+          export STRIP=llvm-strip
+          export LLVM=1
+          export LLVM_IAS=1
+          export AS=aarch64-linux-gnu-as
+          
+          # Append build configuration variables to $GITHUB_ENV
+          echo "BUILD_CONFIG=kernel/msm-5.4/build.config.lemonadep" >> $GITHUB_ENV
+          echo "VARIANT=qgki" >> $GITHUB_ENV
+          echo "BUILTIN=1" >> $GITHUB_ENV
+          echo "LTO=thin" >> $GITHUB_ENV
+          echo "POLLY=1" >> $GITHUB_ENV
+          echo "GRAPHITE=1" >> $GITHUB_ENV
+          echo "PGO=1" >> $GITHUB_ENV
+          echo "SKIP_MRPROPER=1" >> $GITHUB_ENV
+          echo "BUILD_KERNEL=1" >> $GITHUB_ENV
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
+          echo "AR=llvm-ar" >> $GITHUB_ENV
+          echo "NM=llvm-nm" >> $GITHUB_ENV
+          echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
+          echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
+          echo "STRIP=llvm-strip" >> $GITHUB_ENV
+          echo "LLVM=1" >> $GITHUB_ENV
+          echo "LLVM_IAS=1" >> $GITHUB_ENV
+          echo "AS=aarch64-linux-gnu-as" >> $GITHUB_ENV
+          
+          if [ ! -e "$CLANG_PATH/README.md" ]; then
+            git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
+          fi
+          sudo apt install --fix-missing
+          
+          LLVM=1 LLVM_IAS=1 build/build.sh -j4
 
       - name: Create zip
         run: |
@@ -199,7 +337,7 @@ jobs:
           cp out/msm-5.4-lahaina-qgki/dist/Image AnyKernel3/
           cat out/msm-5.4-lahaina-qgki/dist/*.dtb > AnyKernel3/dtb
           cp out/msm-5.4-lahaina-qgki/dist/dtbo.img AnyKernel3/
-          cd AnyKernel3/ && zip -r9 OP9P-$(/bin/date -u '+%d%m%Y%I%M')-gcc.zip * -x .git README.md ./*/placeholder
+          cd AnyKernel3/ && zip -r9 OP9P-$(/bin/date -u '+%d%m%Y%I%M')-clang.zip * -x .git README.md ./*/placeholder
           cd ../
 
       - uses: actions/upload-artifact@main
