@@ -45,11 +45,37 @@ jobs:
           
           df -h
 
+      - uses: actions/checkout@v4
+
       - name: Install Repo and Python
         run: |
           # Install dependencies
           sudo apt update
           sudo apt install -y python3 python-is-python3
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-pip \
+            curl \
+            git \
+            zip \
+            unzip \
+            gcc \
+            g++ \
+            make \
+            ninja-build \
+            file \
+            bc \
+            bison \
+            flex \
+            libssl-dev \
+            libelf-dev \
+            wget \
+            build-essential \
+            python3-dev \
+            python3-setuptools \
+            rsync \
+            ccache \
+            llvm-dev
           
           mkdir -p ./git-repo
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
@@ -216,10 +242,10 @@ jobs:
           export PATH=$(pwd)/aarch64-linux-android-4.9/bin:$PATH
           
           cd kernel_platform/common
-          make O=../../out clean
-          make O=../../out mrproper
-          make O=../../out lahaina-gki_defconfig
-          make O=../../out -j$(nproc --all)
+          make V=1 O=../../out clean
+          make V=1 O=../../out mrproper
+          make V=1 O=../../out lahaina-gki_defconfig
+          make V=1 O=../../out -j$(nproc --all)
 
       - name: Copy Images
         run: |
