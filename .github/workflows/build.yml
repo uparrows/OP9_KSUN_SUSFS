@@ -59,62 +59,54 @@ jobs:
         run: |
           # Install dependencies
           sudo apt update
-          sudo apt upgrade
-          sudo apt-get install -y -f --no-install-recommends \
-            python3 python-is-python3 python3-pip python3-dev python3-setuptools \
-            curl git zip unzip wget tar zstd libarchive-tools file rsync \
-            lld make ninja-build \
-            llvm-dev libelf-dev \
-            bc bison flex
-            
-          sudo apt install aptitude
-          sudo aptitude -y install binutils-aarch64-linux-gnu
+          sudo apt-get update
+          sudo apt-get install -y curl git ftp lftp wget libarchive-tools ccache python3
+          sudo apt-get install -y pngcrush schedtool dpkg-dev liblz4-tool make optipng maven device-tree-compiler 
+          sudo apt-get install -y libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc
+          sudo apt-get install -y libxml2-utils libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools lzop flex tree
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev
+          sudo apt-get install -y pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl 
+          sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
           
           mkdir -p ./git-repo
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
-          
-          set -x
-          which as   # should NOT point to /usr/bin/as during build
-          which gcc  # should be empty or not used
 
-      # - name: Sync Clang
-        # run: |
-          # set -x
-          # mkdir -p prebuilts-master/clang/host/linux-x86/clang-r450784d/
-          # cd prebuilts-master/clang/host/linux-x86/clang-r450784d/
-          # curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          # bash antman -S=latest
-          # bash antman --patch=glibc
-          
-          # which as   # should NOT point to /usr/bin/as during build
-          # which gcc  # should be empty or not used
-          
-          # ls -l /usr/bin/gcc
-          # ls -l /usr/bin/as
-
-      - name: Setup Environment
+      - name: Sync Clang
         run: |
-          export CLANG_PATH=~/clang
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
-          sh -c "$(curl -sSL https://raw.githubusercontent.com/akhilnarang/scripts/master/setup/android_build_env.sh)"
-          sudo apt install --fix-missing
-          export LLVM_VERSION=18
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh $LLVM_VERSION
-          rm ./llvm.sh
-          sudo apt install --fix-missing
-          sudo ln -s --force /usr/bin/clang-$LLVM_VERSION /usr/bin/clang
-          sudo ln -s --force /usr/bin/ld.lld-$LLVM_VERSION /usr/bin/ld.lld
-          sudo ln -s --force /usr/bin/llvm-objdump-$LLVM_VERSION /usr/bin/llvm-objdump
-          sudo ln -s --force /usr/bin/llvm-ar-$LLVM_VERSION /usr/bin/llvm-ar
-          sudo ln -s --force /usr/bin/llvm-nm-$LLVM_VERSION /usr/bin/llvm-nm
-          sudo ln -s --force /usr/bin/llvm-strip-$LLVM_VERSION /usr/bin/llvm-strip
-          sudo ln -s --force /usr/bin/llvm-objcopy-$LLVM_VERSION /usr/bin/llvm-objcopy
-          sudo ln -s --force /usr/bin/llvm-readelf-$LLVM_VERSION /usr/bin/llvm-readelf
-          sudo ln -s --force /usr/bin/clang++-$LLVM_VERSION /usr/bin/clang++
+          set -x
+          mkdir -p prebuilts-master/clang/host/linux-x86/clang-r450784d/
+          cd prebuilts-master/clang/host/linux-x86/clang-r450784d/
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          bash antman -S=latest
+          bash antman --patch=glibc
+          
+          echo "CLANG_PATH=$(pwd)/bin" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/bin:${PATH}" >> $GITHUB_ENV
+
+
+      # - name: Setup Environment
+        # run: |
+          # export CLANG_PATH=~/clang
+          # git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
+          # sh -c "$(curl -sSL https://raw.githubusercontent.com/akhilnarang/scripts/master/setup/android_build_env.sh)"
+          # sudo apt install --fix-missing
+          # export LLVM_VERSION=18
+          # wget https://apt.llvm.org/llvm.sh
+          # chmod +x llvm.sh
+          # sudo ./llvm.sh $LLVM_VERSION
+          # rm ./llvm.sh
+          # sudo apt install --fix-missing
+          # sudo ln -s --force /usr/bin/clang-$LLVM_VERSION /usr/bin/clang
+          # sudo ln -s --force /usr/bin/ld.lld-$LLVM_VERSION /usr/bin/ld.lld
+          # sudo ln -s --force /usr/bin/llvm-objdump-$LLVM_VERSION /usr/bin/llvm-objdump
+          # sudo ln -s --force /usr/bin/llvm-ar-$LLVM_VERSION /usr/bin/llvm-ar
+          # sudo ln -s --force /usr/bin/llvm-nm-$LLVM_VERSION /usr/bin/llvm-nm
+          # sudo ln -s --force /usr/bin/llvm-strip-$LLVM_VERSION /usr/bin/llvm-strip
+          # sudo ln -s --force /usr/bin/llvm-objcopy-$LLVM_VERSION /usr/bin/llvm-objcopy
+          # sudo ln -s --force /usr/bin/llvm-readelf-$LLVM_VERSION /usr/bin/llvm-readelf
+          # sudo ln -s --force /usr/bin/clang++-$LLVM_VERSION /usr/bin/clang++
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -267,15 +259,11 @@ jobs:
           cd ../../
           
           # Export variables for immediate use in the shell
-          export CLANG_PATH=~/clang
-          export PATH=${CLANG_PATH}/bin:${PATH}
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export ARCH=arm64
           export SUBARCH=arm64
           
           # Append variables to $GITHUB_ENV for GitHub Actions
-          echo "CLANG_PATH=~/clang" >> $GITHUB_ENV
-          echo "PATH=${CLANG_PATH}/bin:${PATH}" >> $GITHUB_ENV
           echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
           echo "ARCH=arm64" >> $GITHUB_ENV
           echo "SUBARCH=arm64" >> $GITHUB_ENV
