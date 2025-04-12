@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-kernel-oneplus-kernelsu-susfs:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Setup System
@@ -33,7 +33,7 @@ jobs:
             unixodbc-dev yarn chrpath libxft-dev \
             libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
             snmp pollinate libpq-dev postgresql-client powershell ruby-full \
-            sphinxsearch subversion microsoft-edge-stable gcc g++ binutils binutils-common binutils-x86-64-linux-gnu build-essential || true
+            sphinxsearch subversion microsoft-edge-stable || true
             
           # Regex-based purges (for bulk families like mysql, php, dotnet)
           sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet') || true
@@ -41,7 +41,6 @@ jobs:
           # Clean up
           sudo apt-get autoremove -y
           sudo apt-get autoclean -y
-          sudo apt-mark hold gcc g++ binutils build-essential
           echo "some packages purged"
           
           set -x
@@ -51,6 +50,9 @@ jobs:
           ls -l /usr/bin/gcc
           ls -l /usr/bin/as
           
+          as --version || true
+          as -help || true
+          
           df -h
 
       - uses: actions/checkout@v4
@@ -58,56 +60,63 @@ jobs:
       - name: Install Repo and Python
         run: |
           # Install dependencies
-          sudo apt update
           sudo apt-get update
-          sudo apt --fix-broken -y install
           sudo apt-get install -y curl git ftp lftp wget libarchive-tools ccache python3
           sudo apt-get install -y pngcrush schedtool dpkg-dev liblz4-tool make optipng maven device-tree-compiler 
           sudo apt-get install -y libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc
           sudo apt-get install -y libxml2-utils libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools lzop flex tree 
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev gcc-9-aarch64-linux-gnu gcc-9-arm-linux-gnueabi
           sudo apt-get install -y pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl 
           sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev binutils-aarch64-linux-gnu
+          
+          set -x
+          which aarch64-linux-gnu-as
+          as --version || true
+          as -help || true
+          set +x
           
           mkdir -p ./git-repo
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
 
-      - name: Sync Clang
-        run: |
-          set -x
-          mkdir -p prebuilts-master/clang/host/linux-x86/clang-r450784d/
-          cd prebuilts-master/clang/host/linux-x86/clang-r450784d/
-          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          bash antman -S=latest
-          bash antman --patch=glibc
-          
-          echo "CLANG_PATH=$(pwd)/bin" >> $GITHUB_ENV
-          echo "PATH=$(pwd)/bin:${PATH}" >> $GITHUB_ENV
-
-
-      # - name: Setup Environment
+      # - name: Sync Clang
         # run: |
-          # export CLANG_PATH=~/clang
-          # git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
-          # sh -c "$(curl -sSL https://raw.githubusercontent.com/akhilnarang/scripts/master/setup/android_build_env.sh)"
-          # sudo apt install --fix-missing
-          # export LLVM_VERSION=18
-          # wget https://apt.llvm.org/llvm.sh
-          # chmod +x llvm.sh
-          # sudo ./llvm.sh $LLVM_VERSION
-          # rm ./llvm.sh
-          # sudo apt install --fix-missing
-          # sudo ln -s --force /usr/bin/clang-$LLVM_VERSION /usr/bin/clang
-          # sudo ln -s --force /usr/bin/ld.lld-$LLVM_VERSION /usr/bin/ld.lld
-          # sudo ln -s --force /usr/bin/llvm-objdump-$LLVM_VERSION /usr/bin/llvm-objdump
-          # sudo ln -s --force /usr/bin/llvm-ar-$LLVM_VERSION /usr/bin/llvm-ar
-          # sudo ln -s --force /usr/bin/llvm-nm-$LLVM_VERSION /usr/bin/llvm-nm
-          # sudo ln -s --force /usr/bin/llvm-strip-$LLVM_VERSION /usr/bin/llvm-strip
-          # sudo ln -s --force /usr/bin/llvm-objcopy-$LLVM_VERSION /usr/bin/llvm-objcopy
-          # sudo ln -s --force /usr/bin/llvm-readelf-$LLVM_VERSION /usr/bin/llvm-readelf
-          # sudo ln -s --force /usr/bin/clang++-$LLVM_VERSION /usr/bin/clang++
+          # set -x
+          # mkdir -p prebuilts-master/clang/host/linux-x86/clang-r450784d/
+          # cd prebuilts-master/clang/host/linux-x86/clang-r450784d/
+          # curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          # bash antman -S=latest
+          # bash antman --patch=glibc
+          
+          # ls -la
+          
+          # # echo "CLANG_PATH=$(pwd)/bin" >> $GITHUB_ENV
+          # # echo "PATH=$(pwd)/bin:${PATH}" >> $GITHUB_ENV
+
+
+      - name: Setup Environment
+        run: |
+          export CLANG_PATH=~/clang
+          echo "CLANG_PATH=~/clang" >> $GITHUB_ENV
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
+          sh -c "$(curl -sSL https://raw.githubusercontent.com/akhilnarang/scripts/master/setup/android_build_env.sh)"
+          sudo apt install --fix-missing
+          export LLVM_VERSION=18
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh $LLVM_VERSION
+          rm ./llvm.sh
+          sudo apt install --fix-missing
+          sudo ln -s --force /usr/bin/clang-$LLVM_VERSION /usr/bin/clang
+          sudo ln -s --force /usr/bin/ld.lld-$LLVM_VERSION /usr/bin/ld.lld
+          sudo ln -s --force /usr/bin/llvm-objdump-$LLVM_VERSION /usr/bin/llvm-objdump
+          sudo ln -s --force /usr/bin/llvm-ar-$LLVM_VERSION /usr/bin/llvm-ar
+          sudo ln -s --force /usr/bin/llvm-nm-$LLVM_VERSION /usr/bin/llvm-nm
+          sudo ln -s --force /usr/bin/llvm-strip-$LLVM_VERSION /usr/bin/llvm-strip
+          sudo ln -s --force /usr/bin/llvm-objcopy-$LLVM_VERSION /usr/bin/llvm-objcopy
+          sudo ln -s --force /usr/bin/llvm-readelf-$LLVM_VERSION /usr/bin/llvm-readelf
+          sudo ln -s --force /usr/bin/clang++-$LLVM_VERSION /usr/bin/clang++
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -289,7 +298,7 @@ jobs:
           export STRIP=llvm-strip
           export LLVM=1
           export LLVM_IAS=1
-          export AS=aarch64-linux-gnu-as
+          # export AS=aarch64-linux-gnu-as
           
           # Append build configuration variables to $GITHUB_ENV
           echo "BUILD_CONFIG=kernel/msm-5.4/build.config.lemonadep" >> $GITHUB_ENV
@@ -311,7 +320,7 @@ jobs:
           echo "STRIP=llvm-strip" >> $GITHUB_ENV
           echo "LLVM=1" >> $GITHUB_ENV
           echo "LLVM_IAS=1" >> $GITHUB_ENV
-          echo "AS=aarch64-linux-gnu-as" >> $GITHUB_ENV
+          # echo "AS=aarch64-linux-gnu-as" >> $GITHUB_ENV
           
           if [ ! -e "$CLANG_PATH/README.md" ]; then
             git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
