@@ -301,7 +301,7 @@ jobs:
           echo "LLVM_IAS=1" >> $GITHUB_ENV
           # echo "AS=aarch64-linux-gnu-as" >> $GITHUB_ENV
           
-          LLVM=1 LLVM_IAS=1 build/build.sh -j4
+          LLVM=1 LLVM_IAS=1 build/build.sh all
 
       - name: Create zip
         run: |
