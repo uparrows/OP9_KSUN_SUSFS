@@ -43,19 +43,20 @@ jobs:
           sudo apt-get autoclean -y
           echo "some packages purged"
           
-          set -x
-          which as   # should NOT point to /usr/bin/as during build
-          which gcc  # should be empty or not used
-          
-          ls -l /usr/bin/gcc
-          ls -l /usr/bin/as
-          
-          as --version || true
-          as -help || true
-          
           df -h
 
       - uses: actions/checkout@v4
+
+      - name: Set CONFIG Environment Variable
+        run: |
+          CONFIG="OP9"
+          echo "Creating folder for configuration: $CONFIG..."
+          mkdir -p "$CONFIG"
+          
+          # Set CONFIG as an environment variable for future steps
+          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+          
+          echo "CONFIG set to: $CONFIG"
 
       - name: Install Repo and Python
         run: |
@@ -69,68 +70,34 @@ jobs:
           sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
           sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev binutils-aarch64-linux-gnu
           
-          set -x
-          which aarch64-linux-gnu-as
-          as --version || true
-          as -help || true
-          set +x
-          
-          mkdir -p ./git-repo
-          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-          chmod a+rx ./git-repo/repo
-          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+          mkdir -p "${{ env.CONFIG }}/git-repo"
+          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > "${{ env.CONFIG }}/git-repo/repo"
+          chmod a+rx "${{ env.CONFIG }}/git-repo/repo"
+          echo "REPO=${{ github.workspace }}/${{ env.CONFIG }}/git-repo/repo" >> $GITHUB_ENV
 
-      # - name: Sync Clang
-        # run: |
-          # set -x
-          # mkdir -p prebuilts-master/clang/host/linux-x86/clang-r450784d/
-          # cd prebuilts-master/clang/host/linux-x86/clang-r450784d/
-          # curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          # bash antman -S=latest
-          # bash antman --patch=glibc
-          
-          # ls -la
-          
-          # # echo "CLANG_PATH=$(pwd)/bin" >> $GITHUB_ENV
-          # # echo "PATH=$(pwd)/bin:${PATH}" >> $GITHUB_ENV
-
-
-      - name: Setup Environment
+      - name: Fetch Clang Toolchain
         run: |
-          export CLANG_PATH=~/clang
-          echo "CLANG_PATH=~/clang" >> $GITHUB_ENV
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
-          sh -c "$(curl -sSL https://raw.githubusercontent.com/akhilnarang/scripts/master/setup/android_build_env.sh)"
-          sudo apt install --fix-missing
-          export LLVM_VERSION=18
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh $LLVM_VERSION
-          rm ./llvm.sh
-          sudo apt install --fix-missing
-          sudo ln -s --force /usr/bin/clang-$LLVM_VERSION /usr/bin/clang
-          sudo ln -s --force /usr/bin/ld.lld-$LLVM_VERSION /usr/bin/ld.lld
-          sudo ln -s --force /usr/bin/llvm-objdump-$LLVM_VERSION /usr/bin/llvm-objdump
-          sudo ln -s --force /usr/bin/llvm-ar-$LLVM_VERSION /usr/bin/llvm-ar
-          sudo ln -s --force /usr/bin/llvm-nm-$LLVM_VERSION /usr/bin/llvm-nm
-          sudo ln -s --force /usr/bin/llvm-strip-$LLVM_VERSION /usr/bin/llvm-strip
-          sudo ln -s --force /usr/bin/llvm-objcopy-$LLVM_VERSION /usr/bin/llvm-objcopy
-          sudo ln -s --force /usr/bin/llvm-readelf-$LLVM_VERSION /usr/bin/llvm-readelf
-          sudo ln -s --force /usr/bin/clang++-$LLVM_VERSION /usr/bin/clang++
+          echo "Fetching Clang toolchain..."
+          mkdir -p "${{ env.CONFIG }}/clang"
+          git clone --recursive --depth=1 -b lineage-20.0 https://github.com/rifsxd/android_prebuilts_clang_kernel_linux-x86_clang-r416183b "${{ env.CONFIG }}/clang"
+          echo "${{ github.workspace }}/${{ env.CONFIG }}/clang/bin" >> $GITHUB_PATH
 
-      - name: Set CONFIG Environment Variable
+      - name: Fetch aarch64 Toolchain
         run: |
-          CONFIG="OP9"
-          
-          # Set CONFIG as an environment variable for future steps
-          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
-          
-          echo "CONFIG set to: $CONFIG"
+          echo "Fetching aarch64 toolchain..."
+          mkdir -p "${{ env.CONFIG }}/aarch64"
+          git clone --recursive --depth=1 -b lineage-19.1 https://github.com/rifsxd/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 "${{ env.CONFIG }}/aarch64"
+          echo "${{ github.workspace }}/${{ env.CONFIG }}/aarch64/bin" >> $GITHUB_PATH
+
+      - name: Fetch arm Toolchain
+        run: |
+          echo "Fetching arm toolchain..."
+          mkdir -p "${{ env.CONFIG }}/arm"
+          git clone --recursive --depth=1 -b lineage-19.1 https://github.com/rifsxd/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 "${{ env.CONFIG }}/arm"
+          echo "${{ github.workspace }}/${{ env.CONFIG }}/arm/bin" >> $GITHUB_PATH
 
       - name: Initialize and Sync Kernel Source
         run: |
-          echo "Creating folder for configuration: $CONFIG..."
-          mkdir -p "$CONFIG"
           cd "$CONFIG"
           
           # Initialize and sync kernel source
@@ -289,13 +256,19 @@ jobs:
           export SKIP_MRPROPER=1
           export BUILD_KERNEL=1
           export CC=clang
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          export LD=ld.lld
           export AR=llvm-ar
           export NM=llvm-nm
+          export OBJSIZE=llvm-size
           export OBJCOPY=llvm-objcopy
           export OBJDUMP=llvm-objdump
+          export READELF=llvm-readelf
           export STRIP=llvm-strip
+          export LLVM_AR=llvm-ar
+          export LLVM_DIS=llvm-dis
+          export LDGOLD=aarch64-linux-gnu-ld.gold
           export LLVM=1
           export LLVM_IAS=1
           # export AS=aarch64-linux-gnu-as
@@ -311,21 +284,22 @@ jobs:
           echo "SKIP_MRPROPER=1" >> $GITHUB_ENV
           echo "BUILD_KERNEL=1" >> $GITHUB_ENV
           echo "CC=clang" >> $GITHUB_ENV
-          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
-          echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=aarch64-linux-android-" >> $GITHUB_ENV
+          echo "CROSS_COMPILE_ARM32=arm-linux-androideabi-" >> $GITHUB_ENV
+          echo "LD=ld.lld" >> $GITHUB_ENV
           echo "AR=llvm-ar" >> $GITHUB_ENV
           echo "NM=llvm-nm" >> $GITHUB_ENV
+          echo "OBJSIZE=llvm-size" >> $GITHUB_ENV
           echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
           echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
+          echo "READELF=llvm-readelf" >> $GITHUB_ENV
           echo "STRIP=llvm-strip" >> $GITHUB_ENV
+          echo "LLVM_AR=llvm-ar" >> $GITHUB_ENV
+          echo "LLVM_DIS=llvm-dis" >> $GITHUB_ENV
+          echo "LDGOLD=aarch64-linux-gnu-ld.gold" >> $GITHUB_ENV
           echo "LLVM=1" >> $GITHUB_ENV
           echo "LLVM_IAS=1" >> $GITHUB_ENV
           # echo "AS=aarch64-linux-gnu-as" >> $GITHUB_ENV
-          
-          if [ ! -e "$CLANG_PATH/README.md" ]; then
-            git clone --depth=1 https://github.com/kdrag0n/proton-clang $CLANG_PATH
-          fi
-          sudo apt install --fix-missing
           
           LLVM=1 LLVM_IAS=1 build/build.sh -j4
 
